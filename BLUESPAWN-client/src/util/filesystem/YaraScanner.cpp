@@ -47,7 +47,7 @@ YR_RULES* LoadRules(const AllocationWrapper& memory){
 	}
 	return rules;
 }
-
+ 
 YaraScanner::YaraScanner() :
 	status{ YaraStatus::Success }{
 	yr_initialize();

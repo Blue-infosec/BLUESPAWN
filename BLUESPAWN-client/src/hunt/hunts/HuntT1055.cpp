@@ -5,15 +5,10 @@
 #include "util/eventlogs/EventLogs.h"
 #include "util/log/Log.h"
 #include "util/log/HuntLogMessage.h"
+#include "common/StringUtils.h"
 
-#include "pe_sieve_types.h"
-
-extern "C" {
-	void __stdcall PESieve_help(void);
-	DWORD __stdcall PESieve_version(void);
-	pesieve::t_report __stdcall PESieve_scan(pesieve::t_params args);
-};
-
+#include "pe_sieve.h"
+#include "pe_sieve_api.h"
 
 namespace Hunts{
 
@@ -40,7 +35,9 @@ namespace Hunts{
 			0
 		};
 
-		auto summary = PESieve_scan(params);
+		WRAP(ProcessScanReport*, report, scan_process(params), delete data);
+
+		auto summary = report->generateSummary();
 		if(summary.errors){
 			LOG_WARNING("Unable to scan process " << pid << " due to an error in PE-Sieve.dll");
 		}
@@ -59,23 +56,14 @@ namespace Hunts{
 			if(summary.implanted + summary.hooked + summary.detached + summary.hdr_mod + summary.replaced != summary.suspicious)
 				identifiers |= static_cast<DWORD>(ProcessDetectionMethod::Other);
 
-			HandleWrapper handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-			std::wstring name = {};
-			std::wstring path = {};
-			if(handle){
-				DWORD buffSize = 1024;
-				wchar_t buffer[1024];
-				if(QueryFullProcessImageNameW(handle, 0, buffer, &buffSize))
-					name = buffer;
+			std::wstring path = StringToWidestring(report->mainImagePath);
 
-				buffSize = 1024;
-				if(GetProcessImageFileNameW(handle, buffer, buffSize))
-					path = buffer;
+			for(auto module : report->module_reports){
+				if(module->status & ProcessScanReport::REPORT_SUSPICIOUS){
+					reaction.ProcessIdentified(std::make_shared<PROCESS_DETECTION>(path, std::wstring{}, pid, module->module, module->moduleSize, identifiers));
+				}
 			}
 
-
-
-			reaction.ProcessIdentified(std::make_shared<PROCESS_DETECTION>(name, path, std::wstring{}, pid, 0, identifiers));
 			return true;
 		}
 
